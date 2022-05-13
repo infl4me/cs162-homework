@@ -22,13 +22,13 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
 #include <assert.h>
+#include <ctype.h>
 #include <getopt.h>
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
-#include <string.h>
-#include <ctype.h>
-#include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "word_count.h"
 
@@ -44,8 +44,19 @@ WordCount *word_counts = NULL;
  * Returns the total amount of words found in infile.
  * Useful functions: fgetc(), isalpha().
  */
-int num_words(FILE* infile) {
-  int num_words = 0;
+int num_words(FILE *infile) {
+  int c, in_word = 0, num_words = 0;
+
+  while ((c = fgetc(infile)) != EOF) {
+    if (isalpha(c)) {
+      in_word = 1;
+    } else {
+      if (in_word) {
+        num_words += 1;
+        in_word = 0;
+      }
+    }
+  }
 
   return num_words;
 }
@@ -57,6 +68,27 @@ int num_words(FILE* infile) {
  * Useful functions: fgetc(), isalpha(), tolower(), add_word().
  */
 void count_words(WordCount **wclist, FILE *infile) {
+  int c, in_word = 0, index = 0;
+  char buffer[MAX_WORD_LEN];
+
+  while ((c = fgetc(infile)) != EOF) {
+    if (isalpha(c)) {
+      if (in_word) {
+        buffer[index] = tolower(c);
+        index += 1;
+      } else {
+        buffer[0] = tolower(c);
+        index = 1;
+        in_word = 1;
+      }
+    } else {
+      if (in_word) {
+        buffer[index] = '\0';
+        add_word(wclist, buffer);
+        in_word = 0;
+      }
+    }
+  }
 }
 
 /*
@@ -64,23 +96,30 @@ void count_words(WordCount **wclist, FILE *infile) {
  * Useful function: strcmp().
  */
 static bool wordcount_less(const WordCount *wc1, const WordCount *wc2) {
-  return 0;
+  if (wc1->count == wc2->count) {
+    return strcmp(wc1->word, wc2->word) > 0 ? 0 : 1;
+  }
+
+  return wc1->count < wc2->count;
 }
 
 // In trying times, displays a helpful message.
 static int display_help(void) {
-	printf("Flags:\n"
-	    "--count (-c): Count the total amount of words in the file, or STDIN if a file is not specified. This is default behavior if no flag is specified.\n"
-	    "--frequency (-f): Count the frequency of each word in the file, or STDIN if a file is not specified.\n"
-	    "--help (-h): Displays this help message.\n");
-	return 0;
+  printf(
+      "Flags:\n"
+      "--count (-c): Count the total amount of words in the file, or STDIN if "
+      "a file is not specified. This is default behavior if no flag is "
+      "specified.\n"
+      "--frequency (-f): Count the frequency of each word in the file, or "
+      "STDIN if a file is not specified.\n"
+      "--help (-h): Displays this help message.\n");
+  return 0;
 }
 
 /*
  * Handle command line flags and arguments.
  */
-int main (int argc, char *argv[]) {
-
+int main(int argc, char *argv[]) {
   // Count Mode (default): outputs the total amount of words counted
   bool count_mode = true;
   int total_words = 0;
@@ -92,28 +131,25 @@ int main (int argc, char *argv[]) {
 
   // Variables for command line argument parsing
   int i;
-  static struct option long_options[] =
-  {
-      {"count", no_argument, 0, 'c'},
-      {"frequency", no_argument, 0, 'f'},
-      {"help", no_argument, 0, 'h'},
-      {0, 0, 0, 0}
-  };
+  static struct option long_options[] = {{"count", no_argument, 0, 'c'},
+                                         {"frequency", no_argument, 0, 'f'},
+                                         {"help", no_argument, 0, 'h'},
+                                         {0, 0, 0, 0}};
 
   // Sets flags
   while ((i = getopt_long(argc, argv, "cfh", long_options, NULL)) != -1) {
-      switch (i) {
-          case 'c':
-              count_mode = true;
-              freq_mode = false;
-              break;
-          case 'f':
-              count_mode = false;
-              freq_mode = true;
-              break;
-          case 'h':
-              return display_help();
-      }
+    switch (i) {
+      case 'c':
+        count_mode = true;
+        freq_mode = false;
+        break;
+      case 'f':
+        count_mode = false;
+        freq_mode = true;
+        break;
+      case 'h':
+        return display_help();
+    }
   }
 
   if (!count_mode && !freq_mode) {
@@ -128,18 +164,21 @@ int main (int argc, char *argv[]) {
     // No input file specified, instead, read from STDIN instead.
     infile = stdin;
   } else {
+    infile = fopen(argv[optind], "r");
     // At least one file specified. Useful functions: fopen(), fclose().
     // The first file can be found at argv[optind]. The last file can be
     // found at argv[argc-1].
   }
 
   if (count_mode) {
+    total_words = num_words(infile);
     printf("The total number of words is: %i\n", total_words);
   } else {
+    count_words(&word_counts, infile);
     wordcount_sort(&word_counts, wordcount_less);
 
     printf("The frequencies of each word are: \n");
     fprint_words(word_counts, stdout);
-}
+  }
   return 0;
 }

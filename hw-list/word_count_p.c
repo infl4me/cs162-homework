@@ -30,8 +30,8 @@
 
 #include "word_count.h"
 
-char *new_string(char *str) {
-  return strcpy((char *)malloc(strlen(str) + 1), str);
+char* new_string(char* str) {
+  return strcpy((char*)malloc(strlen(str) + 1), str);
 }
 
 void init_words(word_count_list_t* wclist) { list_init(&wclist->lst); }
@@ -64,10 +64,14 @@ word_count_t* find_word(word_count_list_t* wclist, char* word) {
 }
 
 word_count_t* add_word(word_count_list_t* wclist, char* word) {
+  pthread_mutex_lock(&wclist->lock);
   word_count_t* wc = find_word(wclist, word);
 
   if (wc != NULL) {
     wc->count += 1;
+
+    pthread_mutex_unlock(&wclist->lock);
+
     return wc;
   }
 
@@ -75,6 +79,8 @@ word_count_t* add_word(word_count_list_t* wclist, char* word) {
   wc->count = 1;
   wc->word = new_string(word);
   list_push_back(&wclist->lst, &wc->elem);
+
+  pthread_mutex_unlock(&wclist->lock);
 
   return wc;
 }

@@ -60,6 +60,11 @@ int main(int argc, char *argv[]) {
     /* Process stdin in a single thread. */
     count_words(&word_counts, stdin);
   } else {
+    if (pthread_mutex_init(&word_counts.lock, NULL) != 0) {
+        printf("\n mutex init has failed\n");
+        return 1;
+    }
+
     int MAX_FILES_NUM = 50;
     int t;
     char filepath[100];
@@ -67,7 +72,7 @@ int main(int argc, char *argv[]) {
     DIR *d = opendir(argv[1]);
     struct dirent *dir = readdir(d);
     for (t = 0; dir != NULL; dir = readdir(d), t++) {
-      if (dir->d_name[0] != '.') {
+      if (dir->d_name[0] != '.') { // skip "." and ".." files
         strcpy(filepath, argv[1]);
         strcat(filepath, "/");
         strcat(filepath, dir->d_name);
@@ -85,6 +90,9 @@ int main(int argc, char *argv[]) {
     for (int i = 0; i < t; i++) {
       pthread_join(threads[i]->pth, NULL);
     }
+
+    closedir(d);
+    pthread_mutex_destroy(&word_counts.lock);
   }
 
   /* Output final result of all threads' work. */

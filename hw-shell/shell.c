@@ -124,21 +124,42 @@ void exec_program(struct tokens* tokens) {
   int status;
 
   if (pid == -1) {
-    fprintf(stdout, "Couldn't run the program\n");
+    printf("Program failed: %s\n", strerror(errno));
   } else if (pid == 0) {
-    char* args[30];
-    int i;
-    for (i = 0; i < tokens_get_length(tokens); i++) {
+    int ARGS_MAX_SIZE = 30, i, tokens_length = tokens_get_length(tokens);
+    char* args[ARGS_MAX_SIZE];
+
+    int has_stdin_redirect =
+        tokens_length > 2 && tokens_get_token(tokens, tokens_length - 2)[0] == '<';
+    int has_stdout_redirect =
+        tokens_length > 2 && tokens_get_token(tokens, tokens_length - 2)[0] == '>';
+    int has_redirect = has_stdin_redirect || has_stdout_redirect;
+
+    for (i = 0; i < (has_redirect ? tokens_length - 2 : tokens_length); i++) {
       args[i] = tokens_get_token(tokens, i);
     }
     args[i] = NULL;
+
+    int fd;
+    if (has_redirect) {
+      fd = open(tokens_get_token(tokens, tokens_length - 1), O_RDWR);
+      if (fd == -1) {
+        exit(EXIT_FAILURE);
+      }
+
+      if (has_stdout_redirect) {
+        dup2(fd, STDOUT_FILENO);
+      } else if (has_stdin_redirect) {
+        dup2(fd, STDIN_FILENO);
+      }
+    }
 
     execv(tokens_get_token(tokens, 0), args);
     exit(EXIT_FAILURE);
   } else {
     waitpid(pid, &status, 0);
     if (status != EXIT_SUCCESS) {
-      fprintf(stdout, "Program failed\n");
+      printf("Program failed: %d\n", status);
     }
   }
 }

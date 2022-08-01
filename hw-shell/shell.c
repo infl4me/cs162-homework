@@ -63,7 +63,7 @@ int cmd_pwd(unused struct tokens* tokens) {
   int SIZE = 256;
   char buffer[SIZE];
 
-  char *result_buffer = getcwd(buffer, SIZE);
+  char* result_buffer = getcwd(buffer, SIZE);
   if (result_buffer == NULL) {
     printf("pwd failed\n");
     return 0;
@@ -118,6 +118,31 @@ void init_shell() {
   }
 }
 
+/* forks, execs and waits for passed program  */
+void exec_program(struct tokens* tokens) {
+  pid_t pid = fork();
+  int status;
+
+  if (pid == -1) {
+    fprintf(stdout, "Couldn't run the program\n");
+  } else if (pid == 0) {
+    char* args[30];
+    int i;
+    for (i = 0; i < tokens_get_length(tokens); i++) {
+      args[i] = tokens_get_token(tokens, i);
+    }
+    args[i] = NULL;
+
+    execv(tokens_get_token(tokens, 0), args);
+    exit(EXIT_FAILURE);
+  } else {
+    waitpid(pid, &status, 0);
+    if (status != EXIT_SUCCESS) {
+      fprintf(stdout, "Program failed\n");
+    }
+  }
+}
+
 int main(unused int argc, unused char* argv[]) {
   init_shell();
 
@@ -138,8 +163,7 @@ int main(unused int argc, unused char* argv[]) {
     if (fundex >= 0) {
       cmd_table[fundex].fun(tokens);
     } else {
-      /* REPLACE this to run commands as programs. */
-      fprintf(stdout, "This shell doesn't know how to run programs.\n");
+      exec_program(tokens);
     }
 
     if (shell_is_interactive)

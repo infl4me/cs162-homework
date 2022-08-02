@@ -135,14 +135,8 @@ void exec_program(struct tokens* tokens) {
         tokens_length > 2 && tokens_get_token(tokens, tokens_length - 2)[0] == '>';
     int has_redirect = has_stdin_redirect || has_stdout_redirect;
 
-    for (i = 0; i < (has_redirect ? tokens_length - 2 : tokens_length); i++) {
-      args[i] = tokens_get_token(tokens, i);
-    }
-    args[i] = NULL;
-
-    int fd;
     if (has_redirect) {
-      fd = open(tokens_get_token(tokens, tokens_length - 1), O_RDWR);
+      int fd = open(tokens_get_token(tokens, tokens_length - 1), O_RDWR);
       if (fd == -1) {
         exit(EXIT_FAILURE);
       }
@@ -150,8 +144,17 @@ void exec_program(struct tokens* tokens) {
       if (has_stdout_redirect) {
         dup2(fd, STDOUT_FILENO);
       } else if (has_stdin_redirect) {
+        args[0] = tokens_get_token(tokens, 0);
+        args[1] = NULL;
         dup2(fd, STDIN_FILENO);
       }
+    }
+
+    if (!has_stdin_redirect) {
+      for (i = 0; i < tokens_length; i++) {
+        args[i] = tokens_get_token(tokens, i);
+      }
+      args[i] = NULL;
     }
 
     execv(tokens_get_token(tokens, 0), args);

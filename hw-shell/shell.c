@@ -118,6 +118,39 @@ void init_shell() {
   }
 }
 
+/*
+  returns full path to the program
+  if program_name already exists returns it
+  otherwise looks for the program in PATH
+ */
+char* get_program_path(char* program_name) {
+  if (access(program_name, F_OK) == 0) {
+    return program_name;
+  }
+
+  char* path_dirs = getenv("PATH");
+  if (path_dirs == NULL) {
+    return NULL;
+  }
+
+  char* token = strtok(path_dirs, ":");
+  char* program_path = malloc(128);
+
+  while (token != NULL) {
+    strcpy(program_path, token);
+    strcat(program_path, "/");
+    strcat(program_path, program_name);
+    
+    if (access(program_path, F_OK) == 0) {
+      return program_path;
+    }
+
+    token = strtok(NULL, ":");
+  }
+
+  return NULL;
+}
+
 /* forks, execs and waits for passed program  */
 void exec_program(struct tokens* tokens) {
   pid_t pid = fork();
@@ -128,6 +161,12 @@ void exec_program(struct tokens* tokens) {
   } else if (pid == 0) {
     int ARGS_MAX_SIZE = 30, i, tokens_length = tokens_get_length(tokens);
     char* args[ARGS_MAX_SIZE];
+    char* program_path = get_program_path(tokens_get_token(tokens, 0));
+
+    if (program_path == NULL) {
+      printf("File not found\n");
+      exit(EXIT_FAILURE);
+    }
 
     int has_stdin_redirect =
         tokens_length > 2 && tokens_get_token(tokens, tokens_length - 2)[0] == '<';
@@ -157,7 +196,7 @@ void exec_program(struct tokens* tokens) {
       args[i] = NULL;
     }
 
-    execv(tokens_get_token(tokens, 0), args);
+    execv(program_path, args);
     exit(EXIT_FAILURE);
   } else {
     waitpid(pid, &status, 0);

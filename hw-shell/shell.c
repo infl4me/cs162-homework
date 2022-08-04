@@ -235,11 +235,10 @@ void process_programs(struct tokens* tokens) {
       out = pipe_fds[1];
 
       args[arg_i] = NULL;
-      run_program(args, piped ? in : 0, out);
+      run_program(args, in, out);
       close(out);
 
-      // if there are more than 1 pipe, close prev read-pipe before rewriting
-      if (piped) {
+      if (in) {
         close(in);
       }
       in = pipe_fds[0];

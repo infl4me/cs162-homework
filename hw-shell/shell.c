@@ -119,16 +119,17 @@ void init_shell() {
 }
 
 /*
-  returns full path to the program
-  if program_name already exists returns it
-  otherwise looks for the program in PATH
+  resolves path to the program
+  if given path doesn't exist tries to search the program in the PATH
  */
-char* get_program_path(char* program_name) {
+char* resolve_program_path(char* program_name) {
   if (access(program_name, F_OK) == 0) {
     return program_name;
   }
 
-  char* path_dirs = getenv("PATH");
+  char* path_dirs = malloc(1024);
+  strcpy(path_dirs, getenv("PATH"));
+
   if (path_dirs == NULL) {
     return NULL;
   }
@@ -140,28 +141,121 @@ char* get_program_path(char* program_name) {
     strcpy(program_path, token);
     strcat(program_path, "/");
     strcat(program_path, program_name);
-    
+
     if (access(program_path, F_OK) == 0) {
+      free(path_dirs);
       return program_path;
     }
 
     token = strtok(NULL, ":");
   }
 
+  free(path_dirs);
+
   return NULL;
 }
 
+void run_program(char** args, int in_fd, int out_fd) {
+  pid_t forked_pid = fork();
+
+  if (forked_pid == -1) {
+    printf("Failed to create new process: %s\n", strerror(errno));
+    return;
+  }
+
+  if (forked_pid > 0) {
+    int status;
+
+    waitpid(forked_pid, &status, 0);
+
+    if (status != EXIT_SUCCESS) {
+      printf("Program failed: %d\n", status);
+    }
+
+    return;
+  }
+
+  if (forked_pid == 0) {
+    if (in_fd) {
+      dup2(in_fd, STDIN_FILENO);
+    }
+
+    if (out_fd) {
+      dup2(out_fd, STDOUT_FILENO);
+    }
+
+    execv(resolve_program_path(args[0]), args);
+    exit(EXIT_FAILURE);
+  }
+}
+
+/*
+  processes programs passed in form of tokens
+  supports multiple pipelines, and in/out file redirects
+*/
+void process_programs(struct tokens* tokens) {
+  char* args[30];
+  char* token;
+  int pipe_fds[2];
+  int token_i, arg_i = 0;
+  bool piped = false;
+  int in = 0, out = 0;
+
+  if (pipe(pipe_fds) == -1) {
+    printf("Failed to create new pipe\n");
+    return;
+  }
+
+  for (token_i = 0; token_i < tokens_get_length(tokens); token_i++, arg_i++) {
+    token = tokens_get_token(tokens, token_i);
+
+    if (token[0] == '|') {
+      pipe(pipe_fds);
+
+      // save pipe's FDs to separate variables
+      // since in case of multiple pipelines
+      // we need to pass FDs from different pipes to some programs:
+      // for example if we have two pipelines:
+      //   - first program receives: stdin:stdin, stdout:pipe1[1]
+      //   - second program receives: stdin:pipe1[0], stdout:pipe2[1]
+      //   - third program receives: stdin:pipe2[0], stdout:stdout
+      out = pipe_fds[1];
+
+      args[arg_i] = NULL;
+      run_program(args, piped ? in : 0, out);
+      close(out);
+
+      // if there are more than 1 pipe, close prev read-pipe before rewriting
+      if (piped) {
+        close(in);
+      }
+      in = pipe_fds[0];
+
+      // reset arg counter to run next program
+      arg_i = -1;
+      piped = true;
+    } else {
+      args[arg_i] = token;
+    }
+  }
+
+  args[arg_i] = NULL;
+
+  run_program(args, piped ? in : 0, 0);
+}
+
 /* forks, execs and waits for passed program  */
-void exec_program(struct tokens* tokens) {
-  pid_t pid = fork();
+void exec_program2(struct tokens* tokens) {
   int status;
+  int tokens_length = tokens_get_length(tokens);
+  pid_t pid = fork();
 
   if (pid == -1) {
-    printf("Program failed: %s\n", strerror(errno));
+    printf("Process failed: %s\n", strerror(errno));
   } else if (pid == 0) {
-    int ARGS_MAX_SIZE = 30, i, tokens_length = tokens_get_length(tokens);
+    int ARGS_MAX_SIZE = 30, i;
     char* args[ARGS_MAX_SIZE];
-    char* program_path = get_program_path(tokens_get_token(tokens, 0));
+    char* program_path = resolve_program_path(tokens_get_token(tokens, 0));
 
     if (program_path == NULL) {
       printf("File not found\n");
@@ -226,7 +320,7 @@ int main(unused int argc, unused char* argv[]) {
     if (fundex >= 0) {
       cmd_table[fundex].fun(tokens);
     } else {
-      exec_program(tokens);
+      process_programs(tokens);
     }
 
     if (shell_is_interactive)

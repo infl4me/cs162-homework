@@ -155,6 +155,16 @@ char* resolve_program_path(char* program_name) {
   return NULL;
 }
 
+void print_args(char** args) {
+  for (int i = 0; i < 10; i++) {
+    printf("arg [%d]: >>>%s<<<\n", i, args[i]);
+    if (args[i] == NULL) {
+      puts("=================================\n");
+      return;
+    }
+  }
+}
+
 void run_program(char** args, int in_fd, int out_fd) {
   pid_t forked_pid = fork();
 
@@ -192,6 +202,9 @@ void run_program(char** args, int in_fd, int out_fd) {
 /*
   processes programs passed in form of tokens
   supports multiple pipelines, and in/out file redirects
+
+  doesn't support a query mixed with pipelines and redirects
+  the behavior is undefined
 */
 void process_programs(struct tokens* tokens) {
   char* args[30];
@@ -234,6 +247,26 @@ void process_programs(struct tokens* tokens) {
       // reset arg counter to run next program
       arg_i = -1;
       piped = true;
+    } else if (token[0] == '>') {
+      // ignore redirect token and filepath
+      token_i++;
+      arg_i--;
+
+      out = open(tokens_get_token(tokens, token_i), O_WRONLY | O_APPEND | O_CREAT, 0644);
+
+      if (out == -1) {
+        exit(EXIT_FAILURE);
+      }
+    } else if (token[0] == '<') {
+      // ignore redirect token and filepath
+      token_i++;
+      arg_i--;
+
+      in = open(tokens_get_token(tokens, token_i), O_RDWR | O_APPEND | O_CREAT, 0644);
+
+      if (in == -1) {
+        exit(EXIT_FAILURE);
+      }
     } else {
       args[arg_i] = token;
     }
@@ -241,63 +274,7 @@ void process_programs(struct tokens* tokens) {
 
   args[arg_i] = NULL;
 
-  run_program(args, piped ? in : 0, 0);
-}
-
-/* forks, execs and waits for passed program  */
-void exec_program2(struct tokens* tokens) {
-  int status;
-  int tokens_length = tokens_get_length(tokens);
-  pid_t pid = fork();
-
-  if (pid == -1) {
-    printf("Process failed: %s\n", strerror(errno));
-  } else if (pid == 0) {
-    int ARGS_MAX_SIZE = 30, i;
-    char* args[ARGS_MAX_SIZE];
-    char* program_path = resolve_program_path(tokens_get_token(tokens, 0));
-
-    if (program_path == NULL) {
-      printf("File not found\n");
-      exit(EXIT_FAILURE);
-    }
-
-    int has_stdin_redirect =
-        tokens_length > 2 && tokens_get_token(tokens, tokens_length - 2)[0] == '<';
-    int has_stdout_redirect =
-        tokens_length > 2 && tokens_get_token(tokens, tokens_length - 2)[0] == '>';
-    int has_redirect = has_stdin_redirect || has_stdout_redirect;
-
-    if (has_redirect) {
-      int fd = open(tokens_get_token(tokens, tokens_length - 1), O_RDWR);
-      if (fd == -1) {
-        exit(EXIT_FAILURE);
-      }
-
-      if (has_stdout_redirect) {
-        dup2(fd, STDOUT_FILENO);
-      } else if (has_stdin_redirect) {
-        args[0] = tokens_get_token(tokens, 0);
-        args[1] = NULL;
-        dup2(fd, STDIN_FILENO);
-      }
-    }
-
-    if (!has_stdin_redirect) {
-      for (i = 0; i < tokens_length; i++) {
-        args[i] = tokens_get_token(tokens, i);
-      }
-      args[i] = NULL;
-    }
-
-    execv(program_path, args);
-    exit(EXIT_FAILURE);
-  } else {
-    waitpid(pid, &status, 0);
-    if (status != EXIT_SUCCESS) {
-      printf("Program failed: %d\n", status);
-    }
-  }
+  run_program(args, in, out);
 }
 
 int main(unused int argc, unused char* argv[]) {

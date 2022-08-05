@@ -165,6 +165,9 @@ void print_args(char** args) {
   }
 }
 
+// pgid that matches pid of the first process of a session
+static int session_pgid = 0;
+
 void run_program(char** args, int in_fd, int out_fd) {
   pid_t forked_pid = fork();
 
@@ -176,10 +179,18 @@ void run_program(char** args, int in_fd, int out_fd) {
   if (forked_pid > 0) {
     int status;
 
+    if (!session_pgid) {
+      session_pgid = forked_pid;
+    }
+
+    setpgid(forked_pid, session_pgid);
+
     waitpid(forked_pid, &status, 0);
 
     if (status != EXIT_SUCCESS) {
-      printf("Program failed: %d\n", status);
+      if (status != SIGINT && status != SIGQUIT) {
+        printf("Program failed: %d\n", status);
+      }
     }
 
     return;
@@ -199,6 +210,14 @@ void run_program(char** args, int in_fd, int out_fd) {
   }
 }
 
+void sigquit_handler(int sig) {
+  if (sig == SIGINT || sig == SIGQUIT) {
+    if (session_pgid) {
+      kill(-session_pgid, SIGINT); // kill all running processes of the session
+    }
+  }
+}
+
 /*
   processes programs passed in form of tokens
   supports multiple pipelines, and in/out file redirects
@@ -206,24 +225,21 @@ void run_program(char** args, int in_fd, int out_fd) {
   doesn't support a query mixed with pipelines and redirects
   the behavior is undefined
 */
-void process_programs(struct tokens* tokens) {
+void start_session(struct tokens* tokens) {
   char* args[30];
   char* token;
   int pipe_fds[2];
   int token_i, arg_i = 0;
-  bool piped = false;
   int in = 0, out = 0;
-
-  if (pipe(pipe_fds) == -1) {
-    printf("Failed to create new pipe\n");
-    return;
-  }
 
   for (token_i = 0; token_i < tokens_get_length(tokens); token_i++, arg_i++) {
     token = tokens_get_token(tokens, token_i);
 
     if (token[0] == '|') {
-      pipe(pipe_fds);
+      if (pipe(pipe_fds) == -1) {
+        printf("Failed to create new pipe\n");
+        return;
+      }
 
       // save pipe's FDs to separate variables
       // since in case of multiple pipelines
@@ -245,7 +261,6 @@ void process_programs(struct tokens* tokens) {
 
       // reset arg counter to run next program
       arg_i = -1;
-      piped = true;
     } else if (token[0] == '>') {
       // ignore redirect token and filepath
       token_i++;
@@ -274,10 +289,15 @@ void process_programs(struct tokens* tokens) {
   args[arg_i] = NULL;
 
   run_program(args, in, out);
+
+  session_pgid = 0; // don't forget to reset pgid after ending the session
 }
 
 int main(unused int argc, unused char* argv[]) {
   init_shell();
+
+  signal(SIGQUIT, sigquit_handler);
+  signal(SIGINT, sigquit_handler);
 
   static char line[4096];
   int line_num = 0;
@@ -296,7 +316,7 @@ int main(unused int argc, unused char* argv[]) {
     if (fundex >= 0) {
       cmd_table[fundex].fun(tokens);
     } else {
-      process_programs(tokens);
+      start_session(tokens);
     }
 
     if (shell_is_interactive)

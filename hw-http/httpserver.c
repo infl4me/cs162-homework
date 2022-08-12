@@ -31,7 +31,6 @@ char* server_files_directory;
 char* server_proxy_hostname;
 int server_proxy_port;
 
-
 void http_send_server_failure(int);
 void http_send_content_length_header(int, int);
 
@@ -95,7 +94,21 @@ void serve_directory(int fd, char* path) {
   /* TODO: PART 3 */
   /* PART 3 BEGIN */
 
-  // TODO: Open the directory (Hint: opendir() may be useful here)
+  DIR* d = opendir(path);
+  struct dirent* dir;
+
+  if (!d) {
+    http_send_server_failure(fd);
+    return;
+  }
+
+  char buffer[128];
+  while ((dir = readdir(d)) != NULL) {
+    http_format_href(buffer, path, dir->d_name);
+    write(fd, buffer, strlen(buffer));
+  }
+
+  closedir(d);
 
   /**
    * TODO: For each entry in the directory (Hint: look at the usage of readdir() ),
@@ -159,21 +172,24 @@ void handle_files_request(int fd) {
   struct stat path_stat;
   if (stat(path, &path_stat) != 0) {
     char message[] = "Not Found";
-    
+
     http_start_response(fd, 404);
     http_send_header(fd, "Content-Type", "text/html");
     http_send_content_length_header(fd, sizeof(message) - 1);
     http_end_headers(fd);
     write(fd, message, sizeof(message) - 1);
-
-    close(fd);
-    return;
-  }
-
-  if (S_ISREG(path_stat.st_mode)) {
+  } else if (S_ISREG(path_stat.st_mode)) {
     serve_file(fd, path);
-    close(fd);
-    return;
+  } else {
+    char buffer[128];
+    http_format_index(buffer, path);
+    
+    // if dir has index.html, serve it
+    if (access(buffer, F_OK) == 0) {
+      serve_file(fd, buffer);
+    } else {
+      serve_directory(fd, path);
+    }
   }
 
   /* PART 2 & 3 END */

@@ -31,6 +31,27 @@ char* server_files_directory;
 char* server_proxy_hostname;
 int server_proxy_port;
 
+
+void http_send_server_failure(int);
+void http_send_content_length_header(int, int);
+
+void http_send_server_failure(int fd) {
+  char message[] = "Server Error";
+
+  http_start_response(fd, 500);
+  http_send_header(fd, "Content-Type", "text/html");
+  http_send_content_length_header(fd, sizeof(message) - 1);
+  http_end_headers(fd);
+
+  write(fd, message, sizeof(message) - 1);
+}
+
+void http_send_content_length_header(int fd, int content_length) {
+  char content_length_buffer[10];
+  sprintf(content_length_buffer, "%d", content_length);
+  http_send_header(fd, "Content-Length", content_length_buffer);
+}
+
 /*
  * Serves the contents the file stored at `path` to the client socket `fd`.
  * It is the caller's reponsibility to ensure that the file stored at `path` exists.
@@ -39,12 +60,30 @@ void serve_file(int fd, char* path) {
 
   /* TODO: PART 2 */
   /* PART 2 BEGIN */
+  int file_fd = open(path, O_RDONLY);
+  if (file_fd < 0) {
+    printf("Failed to read a file\n");
+    http_send_server_failure(fd);
+    return;
+  }
+
+  int MAX_SIZE = 1024 * 1024;
+  char buffer[MAX_SIZE];
+
+  int bytes_read_count = read(file_fd, buffer, MAX_SIZE);
+
+  if (bytes_read_count >= MAX_SIZE || bytes_read_count < 0) {
+    printf("Failed to read a file\n");
+    http_send_server_failure(fd);
+    return;
+  }
 
   http_start_response(fd, 200);
   http_send_header(fd, "Content-Type", http_get_mime_type(path));
-  http_send_header(fd, "Content-Length", "0"); // TODO: change this line too
+  http_send_content_length_header(fd, bytes_read_count);
   http_end_headers(fd);
 
+  write(fd, buffer, bytes_read_count);
   /* PART 2 END */
 }
 
@@ -117,6 +156,25 @@ void handle_files_request(int fd) {
    */
 
   /* PART 2 & 3 BEGIN */
+  struct stat path_stat;
+  if (stat(path, &path_stat) != 0) {
+    char message[] = "Not Found";
+    
+    http_start_response(fd, 404);
+    http_send_header(fd, "Content-Type", "text/html");
+    http_send_content_length_header(fd, sizeof(message) - 1);
+    http_end_headers(fd);
+    write(fd, message, sizeof(message) - 1);
+
+    close(fd);
+    return;
+  }
+
+  if (S_ISREG(path_stat.st_mode)) {
+    serve_file(fd, path);
+    close(fd);
+    return;
+  }
 
   /* PART 2 & 3 END */
 

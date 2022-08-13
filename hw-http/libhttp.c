@@ -6,8 +6,6 @@
 
 #include "libhttp.h"
 
-#define LIBHTTP_REQUEST_MAX_SIZE 8192
-
 void http_fatal_error(char* message) {
   fprintf(stderr, "%s\n", message);
   exit(ENOBUFS);

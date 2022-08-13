@@ -133,7 +133,6 @@ void serve_directory(int fd, char* path) {
  *   Closes the client socket (fd) when finished.
  */
 void handle_files_request(int fd) {
-
   struct http_request* request = http_request_parse(fd);
 
   if (request == NULL || request->path[0] != '/') {
@@ -183,7 +182,7 @@ void handle_files_request(int fd) {
   } else {
     char buffer[128];
     http_format_index(buffer, path);
-    
+
     // if dir has index.html, serve it
     if (access(buffer, F_OK) == 0) {
       serve_file(fd, buffer);
@@ -212,7 +211,6 @@ void handle_files_request(int fd) {
  *   Closes client socket (fd) and proxy target fd (target_fd) when finished.
  */
 void handle_proxy_request(int fd) {
-
   /*
   * The code below does a DNS lookup of server_proxy_hostname and
   * opens a connection to it. Please do not modify.
@@ -261,6 +259,23 @@ void handle_proxy_request(int fd) {
 
   /* TODO: PART 4 */
   /* PART 4 BEGIN */
+
+  char* read_buffer = malloc(LIBHTTP_REQUEST_MAX_SIZE + 1);
+  if (!read_buffer)
+    http_fatal_error("Malloc failed");
+
+  int bytes_read = read(fd, read_buffer, LIBHTTP_REQUEST_MAX_SIZE);
+  read_buffer[bytes_read] = '\0'; /* Always null-terminate. */
+
+  printf("-------------------------------------------------\n");
+  printf("%s\n", read_buffer);
+  printf("-------------------------------------------------\n");
+
+  write(target_fd, read_buffer, bytes_read);
+
+  bytes_read = read(target_fd, read_buffer, LIBHTTP_REQUEST_MAX_SIZE);
+
+  write(fd, read_buffer, bytes_read);
 
   /* PART 4 END */
 }

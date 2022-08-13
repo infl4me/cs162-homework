@@ -20,6 +20,8 @@
 #ifndef LIBHTTP_H
 #define LIBHTTP_H
 
+#define LIBHTTP_REQUEST_MAX_SIZE 8192
+
 /*
  * Functions for parsing an HTTP request.
  */

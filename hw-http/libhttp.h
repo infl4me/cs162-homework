@@ -30,6 +30,8 @@ struct http_request {
   char* path;
 };
 
+void http_fatal_error(char* message);
+
 struct http_request* http_request_parse(int fd);
 
 /*

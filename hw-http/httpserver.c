@@ -51,6 +51,31 @@ void http_send_content_length_header(int fd, int content_length) {
   http_send_header(fd, "Content-Length", content_length_buffer);
 }
 
+void slowdown(int id) {
+  size_t i;
+  for (i = 0; i < 5000000000; i++) {
+    if (i % 100000000 == 0) {
+      printf("PROCESSING... %d, %ld\n", id, i);
+    }
+  }
+  printf("DONE: %d, %ld\n", id, i);
+}
+
+struct thread_request_handler_args {
+  int client_socket_number;
+  void (*request_handler)(int);
+  pthread_t *tid;
+};
+void* thread_request_handler(void* _args) {
+  struct thread_request_handler_args* args = (struct thread_request_handler_args*)_args;
+
+  args->request_handler(args->client_socket_number);
+
+  free(args);
+
+  return NULL;
+}
+
 /*
  * Serves the contents the file stored at `path` to the client socket `fd`.
  * It is the caller's reponsibility to ensure that the file stored at `path` exists.
@@ -429,6 +454,17 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
      */
 
     /* PART 6 BEGIN */
+    pthread_t thread_id;
+    struct thread_request_handler_args* thread_args =
+        malloc(sizeof(struct thread_request_handler_args));
+    thread_args->client_socket_number = client_socket_number;
+    thread_args->request_handler = request_handler;
+    thread_args->tid = &thread_id;
+
+    if (pthread_create(&thread_id, NULL, thread_request_handler, thread_args) != 0) {
+      printf("Failed to create a thread\n");
+      exit(EXIT_FAILURE);
+    }
 
     /* PART 6 END */
 #elif POOLSERVER

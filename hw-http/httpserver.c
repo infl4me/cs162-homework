@@ -81,7 +81,6 @@ void* thread_request_handler(void* _args) {
  * It is the caller's reponsibility to ensure that the file stored at `path` exists.
  */
 void serve_file(int fd, char* path) {
-  /* TODO: PART 2 */
   /* PART 2 BEGIN */
   int file_fd = open(path, O_RDONLY);
   if (file_fd < 0) {
@@ -115,7 +114,6 @@ void serve_directory(int fd, char* path) {
   http_send_header(fd, "Content-Type", http_get_mime_type(".html"));
   http_end_headers(fd);
 
-  /* TODO: PART 3 */
   /* PART 3 BEGIN */
 
   DIR* d = opendir(path);
@@ -133,13 +131,6 @@ void serve_directory(int fd, char* path) {
   }
 
   closedir(d);
-
-  /**
-   * TODO: For each entry in the directory (Hint: look at the usage of readdir() ),
-   * send a string containing a properly formatted HTML. (Hint: the http_format_href()
-   * function in libhttp.c may be useful here)
-   */
-
   /* PART 3 END */
 }
 
@@ -180,16 +171,6 @@ void handle_files_request(int fd) {
   path[0] = '.';
   path[1] = '/';
   memcpy(path + 2, request->path, strlen(request->path) + 1);
-
-  /*
-   * TODO: PART 2 is to serve files. If the file given by `path` exists,
-   * call serve_file() on it. Else, serve a 404 Not Found error below.
-   * The `stat()` syscall will be useful here.
-   *
-   * TODO: PART 3 is to serve both files and directories. You will need to
-   * determine when to call serve_file() or serve_directory() depending
-   * on `path`. Make your edits below here in this function.
-   */
 
   /* PART 2 & 3 BEGIN */
   struct stat path_stat;
@@ -281,7 +262,6 @@ void handle_proxy_request(int fd) {
     return;
   }
 
-  /* TODO: PART 4 */
   /* PART 4 BEGIN */
 
   char* read_buffer = malloc(LIBHTTP_REQUEST_MAX_SIZE + 1);
@@ -362,15 +342,6 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
   server_address.sin_addr.s_addr = INADDR_ANY;
   server_address.sin_port = htons(server_port);
 
-  /*
-   * TODO: PART 1
-   *
-   * Given the socket created above, call bind() to give it
-   * an address and a port. Then, call listen() with the socket.
-   * An appropriate size of the backlog is 1024, though you may
-   * play around with this value during performance testing.
-   */
-
   /* PART 1 BEGIN */
   if (bind(*socket_number, (struct sockaddr*)&server_address, sizeof(server_address)) == -1) {
     perror("Failed to bind on socket");
@@ -415,16 +386,6 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
     request_handler(client_socket_number);
 
 #elif FORKSERVER
-    /*
-     * TODO: PART 5
-     *
-     * When a client connection has been accepted, a new
-     * process is spawned. This child process will send
-     * a response to the client. Afterwards, the child
-     * process should exit. During this time, the parent
-     * process should continue listening and accepting
-     * connections.
-     */
 
     /* PART 5 BEGIN */
     pid_t pid = fork();
@@ -443,15 +404,6 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
     /* PART 5 END */
 
 #elif THREADSERVER
-    /*
-     * TODO: PART 6
-     *
-     * When a client connection has been accepted, a new
-     * thread is created. This thread will send a response
-     * to the client. The main thread should continue
-     * listening and accepting connections. The main
-     * thread will NOT be joining with the new thread.
-     */
 
     /* PART 6 BEGIN */
     pthread_t thread_id;

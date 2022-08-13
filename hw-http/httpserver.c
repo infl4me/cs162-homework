@@ -51,22 +51,14 @@ void http_send_content_length_header(int fd, int content_length) {
   http_send_header(fd, "Content-Length", content_length_buffer);
 }
 
-void slowdown(int id) {
-  size_t i;
-  for (i = 0; i < 5000000000; i++) {
-    if (i % 100000000 == 0) {
-      printf("PROCESSING... %d, %ld\n", id, i);
-    }
-  }
-  printf("DONE: %d, %ld\n", id, i);
-}
-
 struct thread_request_handler_args {
   int client_socket_number;
   void (*request_handler)(int);
   pthread_t *tid;
 };
 void* thread_request_handler(void* _args) {
+  pthread_detach(pthread_self());
+
   struct thread_request_handler_args* args = (struct thread_request_handler_args*)_args;
 
   args->request_handler(args->client_socket_number);
@@ -293,9 +285,15 @@ void* handle_clients(void* void_request_handler) {
    * be joining on it. */
   pthread_detach(pthread_self());
 
-  /* TODO: PART 7 */
   /* PART 7 BEGIN */
+  int client_socket_fd;
 
+  while (1)
+  {
+    client_socket_fd = wq_pop(&work_queue);
+    request_handler(client_socket_fd);
+  }
+  
   /* PART 7 END */
 }
 
@@ -303,10 +301,15 @@ void* handle_clients(void* void_request_handler) {
  * Creates `num_threads` amount of threads. Initializes the work queue.
  */
 void init_thread_pool(int num_threads, void (*request_handler)(int)) {
-
-  /* TODO: PART 7 */
   /* PART 7 BEGIN */
+  wq_init(&work_queue);
+  pthread_t threads[num_threads];
 
+  for (int i = 0; i < num_threads; i++)
+  {
+    pthread_create(&threads[i], NULL, handle_clients, request_handler);
+  }
+  
   /* PART 7 END */
 }
 #endif
@@ -421,7 +424,7 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
     /* PART 6 END */
 #elif POOLSERVER
     /*
-     * TODO: PART 7
+     * PART 7
      *
      * When a client connection has been accepted, add the
      * client's socket number to the work queue. A thread
@@ -429,7 +432,7 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
      */
 
     /* PART 7 BEGIN */
-
+    wq_push(&work_queue, client_socket_number);
     /* PART 7 END */
 #endif
   }

@@ -267,10 +267,6 @@ void handle_proxy_request(int fd) {
   int bytes_read = read(fd, read_buffer, LIBHTTP_REQUEST_MAX_SIZE);
   read_buffer[bytes_read] = '\0'; /* Always null-terminate. */
 
-  printf("-------------------------------------------------\n");
-  printf("%s\n", read_buffer);
-  printf("-------------------------------------------------\n");
-
   write(target_fd, read_buffer, bytes_read);
 
   bytes_read = read(target_fd, read_buffer, LIBHTTP_REQUEST_MAX_SIZE);

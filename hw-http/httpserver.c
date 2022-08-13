@@ -56,7 +56,6 @@ void http_send_content_length_header(int fd, int content_length) {
  * It is the caller's reponsibility to ensure that the file stored at `path` exists.
  */
 void serve_file(int fd, char* path) {
-
   /* TODO: PART 2 */
   /* PART 2 BEGIN */
   int file_fd = open(path, O_RDONLY);
@@ -403,7 +402,19 @@ void serve_forever(int* socket_number, void (*request_handler)(int)) {
      */
 
     /* PART 5 BEGIN */
+    pid_t pid = fork();
+    if (pid < 0) {
+      printf("Failed to fork\n");
+      exit(EXIT_FAILURE);
+    }
 
+    if (pid == 0) {
+      close(*socket_number);
+      request_handler(client_socket_number);
+      exit(EXIT_SUCCESS);
+    } else {
+      close(client_socket_number);
+    }
     /* PART 5 END */
 
 #elif THREADSERVER

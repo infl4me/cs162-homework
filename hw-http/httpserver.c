@@ -78,17 +78,20 @@ void serve_file(int fd, char* path) {
   if (file_fd < 0) {
     printf("Failed to read a file\n");
     http_send_server_failure(fd);
+    close(file_fd);
     return;
   }
 
-  int MAX_SIZE = 1024 * 1024;
-  char buffer[MAX_SIZE];
+  int MAX_SIZE = 16384;
+  char *buffer = malloc(MAX_SIZE);
 
   int bytes_read_count = read(file_fd, buffer, MAX_SIZE);
 
   if (bytes_read_count >= MAX_SIZE || bytes_read_count < 0) {
     printf("Failed to read a file\n");
     http_send_server_failure(fd);
+    close(file_fd);
+    free(buffer);
     return;
   }
 
@@ -98,6 +101,9 @@ void serve_file(int fd, char* path) {
   http_end_headers(fd);
 
   write(fd, buffer, bytes_read_count);
+
+  close(file_fd);
+  free(buffer);
   /* PART 2 END */
 }
 
@@ -190,6 +196,7 @@ void handle_files_request(int fd) {
 
   /* PART 2 & 3 END */
 
+  free(path);
   close(fd);
   return;
 }
@@ -269,6 +276,9 @@ void handle_proxy_request(int fd) {
 
   write(fd, read_buffer, bytes_read);
 
+  free(read_buffer);
+  close(target_fd);
+  close(fd);
   /* PART 4 END */
 }
 

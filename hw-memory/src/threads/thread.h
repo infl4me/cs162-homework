@@ -99,6 +99,7 @@ struct thread {
 
   struct file* open_file; /* Single open file supported. */
   bool in_syscall;        /* Stores if we are in a syscall. */
+  int stack_pages_count; // number of stack's allocated pages
 #endif
 
   /* Owned by thread.c. */

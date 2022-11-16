@@ -425,3 +425,36 @@ static bool install_page(void* upage, void* kpage, bool writable) {
   return (pagedir_get_page(t->pagedir, upage) == NULL &&
           pagedir_set_page(t->pagedir, upage, kpage, writable));
 }
+
+/*
+  returns true on success, false if it's impossible to grow stack further
+*/
+bool grow_stack(uint8_t* target_vaddr) {
+  if (!is_user_vaddr(target_vaddr))
+    return false;
+
+  uint8_t* kpage;
+  struct thread* t = thread_current();
+
+  int pages_to_allocate = pg_no((uint8_t*)PHYS_BASE) - pg_no(pg_round_up(target_vaddr)) - t->stack_pages_count;
+
+  if (pages_to_allocate <= 0) {
+    return false;
+  }
+
+  for (int i = 1; i <= pages_to_allocate; i++) {
+    kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    if (kpage == NULL) {
+      return false;
+    }
+
+    if (!install_page(((uint8_t*)PHYS_BASE) - (PGSIZE * (t->stack_pages_count + i + 1)), kpage, true)) {
+      palloc_free_page(kpage);
+      return false;
+    }
+  }
+
+  t->stack_pages_count += pages_to_allocate;
+
+  return true;
+}

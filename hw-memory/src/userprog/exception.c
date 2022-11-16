@@ -6,6 +6,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
+#include "userprog/process.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -150,20 +151,14 @@ static void page_fault(struct intr_frame* f) {
   if (!user && t->in_syscall && is_user_vaddr(fault_addr))
     syscall_exit(-1);
 
-  /*
-   * If we faulted in user mode, then we assume it's an invalid memory access
-   * and terminate the process. In Homework 5, Part A, you should no longer
-   * assume this; depending on the nature of the fault, the stack may need to
-   * be grown.
-   */
-  if (user)
+  if (!grow_stack(fault_addr))
     syscall_exit(-1);
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-  printf("Page fault at %p: %s error %s page in %s context.\n", fault_addr,
-         not_present ? "not present" : "rights violation", write ? "writing" : "reading",
-         user ? "user" : "kernel");
-  kill(f);
+//   printf("Page fault at %p: %s error %s page in %s context.\n", fault_addr,
+//          not_present ? "not present" : "rights violation", write ? "writing" : "reading",
+//          user ? "user" : "kernel");
+//   kill(f);
 }

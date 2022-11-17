@@ -430,9 +430,6 @@ static bool install_page(void* upage, void* kpage, bool writable) {
   returns true on success, false if it's impossible to grow stack further
 */
 bool grow_stack(uint8_t* target_vaddr) {
-  if (!is_user_vaddr(target_vaddr))
-    return false;
-
   uint8_t* kpage;
   struct thread* t = thread_current();
 

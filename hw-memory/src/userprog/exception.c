@@ -148,17 +148,29 @@ static void page_fault(struct intr_frame* f) {
    * the kernel and end up here. These checks below will allow us to determine
    * that this happened and terminate the process appropriately.
    */
-  if (!user && t->in_syscall && is_user_vaddr(fault_addr))
+  if (!user && t->in_syscall && is_user_vaddr(fault_addr)) {
     syscall_exit(-1);
+  }
 
-  if (!grow_stack(fault_addr))
+  /*
+    the x86 push instruction checks access permissions before it adjusts the stack pointer
+    so it may cause a page fault 4 bytes below the stack pointer
+    Similarly, the pusha instruction pushes 32 bytes at once, so it may
+    fault 32 bytes below the stack pointer.
+  */
+  if (f->esp == NULL || !is_user_vaddr(fault_addr) || (fault_addr + 32 < f->esp)) {
     syscall_exit(-1);
+  } else {
+    if (!grow_stack(fault_addr)) {
+      syscall_exit(-1);
+    }
+  }
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-//   printf("Page fault at %p: %s error %s page in %s context.\n", fault_addr,
-//          not_present ? "not present" : "rights violation", write ? "writing" : "reading",
-//          user ? "user" : "kernel");
-//   kill(f);
+  //   printf("Page fault at %p: %s error %s page in %s context.\n", fault_addr,
+  //          not_present ? "not present" : "rights violation", write ? "writing" : "reading",
+  //          user ? "user" : "kernel");
+  //   kill(f);
 }

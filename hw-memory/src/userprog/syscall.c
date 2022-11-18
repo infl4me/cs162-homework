@@ -7,6 +7,7 @@
 #include "threads/vaddr.h"
 #include "filesys/filesys.h"
 #include "filesys/file.h"
+#include "userprog/process.h"
 
 static void syscall_handler(struct intr_frame*);
 
@@ -109,6 +110,9 @@ static void syscall_handler(struct intr_frame* f) {
     case SYS_CLOSE:
       validate_buffer_in_user_region(&args[1], sizeof(uint32_t));
       syscall_close((int)args[1]);
+      break;
+    case SYS_SBRK:
+      f->eax = sbrk(args[1]);
       break;
 
     default:

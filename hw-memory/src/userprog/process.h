@@ -8,5 +8,6 @@ int process_wait(tid_t);
 void process_exit(void);
 void process_activate(void);
 bool grow_stack(uint8_t* vaddr);
+void* sbrk(intptr_t increment);
 
 #endif /* userprog/process.h */

@@ -189,8 +189,8 @@ struct Elf32_Phdr {
 
 static bool setup_stack(void** esp);
 static bool validate_segment(const struct Elf32_Phdr*, struct file*);
-static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t read_bytes,
-                         uint32_t zero_bytes, bool writable);
+static void* load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t read_bytes,
+                          uint32_t zero_bytes, bool writable);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
    Stores the executable's entry point into *EIP
@@ -203,6 +203,7 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
   off_t file_ofs;
   bool success = false;
   int i;
+  void* last_segment_upage = NULL;
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create();
@@ -267,7 +268,8 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
             read_bytes = 0;
             zero_bytes = ROUND_UP(page_offset + phdr.p_memsz, PGSIZE);
           }
-          if (!load_segment(file, file_page, (void*)mem_page, read_bytes, zero_bytes, writable))
+          if ((last_segment_upage = load_segment(file, file_page, (void*)mem_page, read_bytes,
+                                                 zero_bytes, writable)) == NULL)
             goto done;
         } else
           goto done;
@@ -281,6 +283,9 @@ bool load(const char* file_name, void (**eip)(void), void** esp) {
 
   /* Start address. */
   *eip = (void (*)(void))ehdr.e_entry;
+
+  t->sbrk = last_segment_upage;
+  t->heap = last_segment_upage;
 
   success = true;
 
@@ -351,8 +356,8 @@ static bool validate_segment(const struct Elf32_Phdr* phdr, struct file* file) {
 
    Return true if successful, false if a memory allocation error
    or disk read error occurs. */
-static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t read_bytes,
-                         uint32_t zero_bytes, bool writable) {
+static void* load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t read_bytes,
+                          uint32_t zero_bytes, bool writable) {
   ASSERT((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT(pg_ofs(upage) == 0);
   ASSERT(ofs % PGSIZE == 0);
@@ -368,19 +373,19 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
     /* Get a page of memory. */
     uint8_t* kpage = palloc_get_page(PAL_USER);
     if (kpage == NULL)
-      return false;
+      return NULL;
 
     /* Load this page. */
     if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes) {
       palloc_free_page(kpage);
-      return false;
+      return NULL;
     }
     memset(kpage + page_read_bytes, 0, page_zero_bytes);
 
     /* Add the page to the process's address space. */
     if (!install_page(upage, kpage, writable)) {
       palloc_free_page(kpage);
-      return false;
+      return NULL;
     }
 
     /* Advance. */
@@ -388,7 +393,8 @@ static bool load_segment(struct file* file, off_t ofs, uint8_t* upage, uint32_t 
     zero_bytes -= page_zero_bytes;
     upage += PGSIZE;
   }
-  return true;
+
+  return upage;
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
@@ -433,7 +439,8 @@ bool grow_stack(uint8_t* target_vaddr) {
   uint8_t* kpage;
   struct thread* t = thread_current();
 
-  int pages_to_allocate = pg_no((uint8_t*)PHYS_BASE) - pg_no(pg_round_up(target_vaddr)) - t->stack_pages_count;
+  int pages_to_allocate =
+      pg_no((uint8_t*)PHYS_BASE) - pg_no(pg_round_up(target_vaddr)) - t->stack_pages_count;
 
   if (pages_to_allocate <= 0) {
     return false;
@@ -445,7 +452,8 @@ bool grow_stack(uint8_t* target_vaddr) {
       return false;
     }
 
-    if (!install_page(((uint8_t*)PHYS_BASE) - (PGSIZE * (t->stack_pages_count + i + 1)), kpage, true)) {
+    if (!install_page(((uint8_t*)PHYS_BASE) - (PGSIZE * (t->stack_pages_count + i + 1)), kpage,
+                      true)) {
       palloc_free_page(kpage);
       return false;
     }
@@ -454,4 +462,41 @@ bool grow_stack(uint8_t* target_vaddr) {
   t->stack_pages_count += pages_to_allocate;
 
   return true;
+}
+
+void* sbrk(intptr_t increment) {
+  uint8_t* kpage;
+  struct thread* t = thread_current();
+  uint8_t* temp_sbrk = t->sbrk;
+
+  if (increment == 0) {
+    return t->sbrk;
+  }
+
+  if (increment < 0) {
+    NOT_REACHED();
+  }
+
+  int pages_to_allocate = pg_no(t->sbrk - 1 + increment) - pg_no(t->sbrk - 1);
+
+  if (pages_to_allocate == 0) {
+    t->sbrk += increment;
+    return temp_sbrk;
+  }
+
+  for (int i = 1; i <= pages_to_allocate; i++) {
+    kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+    if (kpage == NULL) {
+      return (void*)-1;
+    }
+
+    if (!install_page(pg_round_down(t->sbrk - 1) + (PGSIZE * i), kpage, true)) {
+      palloc_free_page(kpage);
+      return (void*)-1;
+    }
+  }
+
+  t->sbrk += increment;
+
+  return temp_sbrk;
 }

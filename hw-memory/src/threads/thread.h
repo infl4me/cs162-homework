@@ -97,9 +97,11 @@ struct thread {
   /* Owned by userprog/process.c. */
   uint32_t* pagedir; /* Page directory. */
 
-  struct file* open_file; /* Single open file supported. */
-  bool in_syscall;        /* Stores if we are in a syscall. */
-  int stack_pages_count; // number of stack's allocated pages
+  struct file* open_file;  /* Single open file supported. */
+  bool in_syscall;         /* Stores if we are in a syscall. */
+  int stack_pages_count;   /* Number of stack's allocated pages */
+  uint8_t* heap;           /* Heap start */
+  uint8_t* sbrk;           /* Segment break */
 #endif
 
   /* Owned by thread.c. */

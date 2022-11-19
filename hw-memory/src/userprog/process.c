@@ -22,6 +22,8 @@
 static struct semaphore temporary;
 static thread_func start_process NO_RETURN;
 static bool load(const char* cmdline, void (**eip)(void), void** esp);
+static bool install_multiple_pages(void* upage, size_t page_cnt, int upage_grow_direction);
+static void uninstall_multiple_pages(void* upage, void* kpage, size_t page_cnt);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -432,11 +434,46 @@ static bool install_page(void* upage, void* kpage, bool writable) {
           pagedir_set_page(t->pagedir, upage, kpage, writable));
 }
 
+static void uninstall_multiple_pages(void* upage, void* kpage, size_t page_cnt) {
+  struct thread* t = thread_current();
+
+  palloc_free_multiple(kpage, page_cnt);
+
+  for (size_t i = 0; i < page_cnt; i++) {
+    pagedir_clear_page(t->pagedir, upage + PGSIZE * i);
+  }
+}
+
 /*
-  returns true on success, false if it's impossible to grow stack further
+  Installs multiple pages
+  if allocation fails, frees all installed pages
+*/
+static bool install_multiple_pages(void* upage, size_t page_cnt, int upage_grow_direction) {
+  struct thread* t = thread_current();
+  uint8_t* kpage;
+
+  kpage = palloc_get_multiple(PAL_USER | PAL_ZERO, page_cnt);
+  if (kpage == NULL) {
+    return false;
+  }
+
+  for (size_t i = 0; i < page_cnt; i++) {
+    if (pagedir_get_page(t->pagedir, upage + PGSIZE * i * upage_grow_direction) != NULL ||
+        !pagedir_set_page(t->pagedir, upage + PGSIZE * i * upage_grow_direction, kpage + PGSIZE * i,
+                          true)) {
+      uninstall_multiple_pages(upage, kpage, i + 1);
+      return false;
+    }
+  }
+
+  return true;
+}
+
+/*
+  Grows stack, up to target_vaddr, adding necessary amount of pages 
+  Returns true on success, false if it's impossible to grow stack further
 */
 bool grow_stack(uint8_t* target_vaddr) {
-  uint8_t* kpage;
   struct thread* t = thread_current();
 
   int pages_to_allocate =
@@ -446,17 +483,9 @@ bool grow_stack(uint8_t* target_vaddr) {
     return false;
   }
 
-  for (int i = 1; i <= pages_to_allocate; i++) {
-    kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-    if (kpage == NULL) {
-      return false;
-    }
-
-    if (!install_page(((uint8_t*)PHYS_BASE) - (PGSIZE * (t->stack_pages_count + i + 1)), kpage,
-                      true)) {
-      palloc_free_page(kpage);
-      return false;
-    }
+  if (!install_multiple_pages(((uint8_t*)PHYS_BASE) - (PGSIZE * (t->stack_pages_count + 2)),
+                              pages_to_allocate, -1)) {
+    return false;
   }
 
   t->stack_pages_count += pages_to_allocate;
@@ -465,7 +494,6 @@ bool grow_stack(uint8_t* target_vaddr) {
 }
 
 void* sbrk(intptr_t increment) {
-  uint8_t* kpage;
   struct thread* t = thread_current();
   uint8_t* temp_sbrk = t->sbrk;
 
@@ -477,23 +505,15 @@ void* sbrk(intptr_t increment) {
     NOT_REACHED();
   }
 
-  int pages_to_allocate = pg_no(t->sbrk - 1 + increment) - pg_no(t->sbrk - 1);
+  size_t pages_to_allocate = pg_no(t->sbrk - 1 + increment) - pg_no(t->sbrk - 1);
 
   if (pages_to_allocate == 0) {
     t->sbrk += increment;
     return temp_sbrk;
   }
 
-  for (int i = 1; i <= pages_to_allocate; i++) {
-    kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-    if (kpage == NULL) {
-      return (void*)-1;
-    }
-
-    if (!install_page(pg_round_down(t->sbrk - 1) + (PGSIZE * i), kpage, true)) {
-      palloc_free_page(kpage);
-      return (void*)-1;
-    }
+  if (!install_multiple_pages(pg_round_down(t->sbrk - 1) + PGSIZE, pages_to_allocate, 1)) {
+    return (void*)-1;
   }
 
   t->sbrk += increment;

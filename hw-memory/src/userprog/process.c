@@ -23,7 +23,6 @@ static struct semaphore temporary;
 static thread_func start_process NO_RETURN;
 static bool load(const char* cmdline, void (**eip)(void), void** esp);
 static bool install_multiple_pages(void* upage, size_t page_cnt, int upage_grow_direction);
-static void uninstall_multiple_pages(void* upage, void* kpage, size_t page_cnt);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -434,16 +433,6 @@ static bool install_page(void* upage, void* kpage, bool writable) {
           pagedir_set_page(t->pagedir, upage, kpage, writable));
 }
 
-static void uninstall_multiple_pages(void* upage, void* kpage, size_t page_cnt) {
-  struct thread* t = thread_current();
-
-  palloc_free_multiple(kpage, page_cnt);
-
-  for (size_t i = 0; i < page_cnt; i++) {
-    pagedir_clear_page(t->pagedir, upage + PGSIZE * i);
-  }
-}
-
 /*
   Installs multiple pages
   if allocation fails, frees all installed pages
@@ -461,8 +450,11 @@ static bool install_multiple_pages(void* upage, size_t page_cnt, int upage_grow_
     if (pagedir_get_page(t->pagedir, upage + PGSIZE * i * upage_grow_direction) != NULL ||
         !pagedir_set_page(t->pagedir, upage + PGSIZE * i * upage_grow_direction, kpage + PGSIZE * i,
                           true)) {
-      uninstall_multiple_pages(upage, kpage, i + 1);
-      return false;
+      palloc_free_multiple(kpage, page_cnt);
+      for (size_t j = 0; j < i + 1; j++) {
+        pagedir_clear_page(t->pagedir, upage + PGSIZE * j * upage_grow_direction);
+        return false;
+      }
     }
   }
 
